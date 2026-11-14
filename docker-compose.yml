@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: velora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-velora_dev_pw}
+      POSTGRES_DB: velora
+    ports:
+      # localhost only: the database is never reachable from other machines
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - velora-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velora -d velora"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: applies migrations and seeds the catalog/demo data (seed skips if already seeded).
+  migrate:
+    build:
+      context: .
+      target: builder
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://velora:${POSTGRES_PASSWORD:-velora_dev_pw}@db:5432/velora?schema=public
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    profiles: ["app"]
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://velora:${POSTGRES_PASSWORD:-velora_dev_pw}@db:5432/velora?schema=public
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    profiles: ["app"]
+
+volumes:
+  velora-db:

@@ -1,0 +1,261 @@
+// VELORA massage studio — data model
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CLIENT
+  ADMIN
+}
+
+enum AppointmentStatus {
+  BOOKED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingSource {
+  WEB
+  ADMIN
+  AI
+}
+
+enum ShiftSource {
+  AUTO
+  MANUAL
+  AI
+}
+
+enum AbsenceType {
+  SICK
+  PAID_LEAVE
+  UNPAID
+  OTHER
+}
+
+enum ContentSource {
+  SEED
+  ADMIN
+  N8N
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum SchedulerRole {
+  ADMIN
+  AI
+  SYSTEM
+}
+
+enum ProposalStatus {
+  NONE
+  PROPOSED
+  APPLIED
+  DISCARDED
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role          @default(CLIENT)
+  locale       String        @default("bg")
+  createdAt    DateTime      @default(now())
+  sessions     Session[]
+  appointments Appointment[]
+}
+
+model Session {
+  id        String   @id // sha256 of the cookie token
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Therapist {
+  id          String                  @id @default(cuid())
+  name        String
+  titleEn     String                  @default("Massage therapist")
+  titleBg     String                  @default("Масажист")
+  bioEn       String                  @default("")
+  bioBg       String                  @default("")
+  color       String                  @default("#A67C46")
+  active      Boolean                 @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime                @default(now())
+  skills      TherapistSkill[]
+  shifts      Shift[]
+  absences    Absence[]
+  allocations AppointmentAllocation[]
+}
+
+model Room {
+  id          Int                     @id
+  name        String
+  sort        Int                     @default(0)
+  allocations AppointmentAllocation[]
+}
+
+model Procedure {
+  id                 String             @id @default(cuid())
+  slug               String             @unique
+  nameEn             String
+  nameBg             String
+  summaryEn          String             @default("")
+  summaryBg          String             @default("")
+  therapistsRequired Int                @default(1)
+  active             Boolean            @default(true)
+  deletedAt          DateTime?
+  sort               Int                @default(0)
+  createdAt          DateTime           @default(now())
+  variants           ProcedureVariant[]
+  skills             TherapistSkill[]
+  appointments       Appointment[]
+  article            Article?
+}
+
+model ProcedureVariant {
+  id           String        @id @default(cuid())
+  procedureId  String
+  procedure    Procedure     @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  durationMin  Int
+  priceCents   Int
+  active       Boolean       @default(true)
+  appointments Appointment[]
+
+  @@index([procedureId])
+}
+
+model TherapistSkill {
+  therapistId String
+  procedureId String
+  therapist   Therapist @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+
+  @@id([therapistId, procedureId])
+}
+
+model Shift {
+  id          String      @id @default(cuid())
+  therapistId String
+  therapist   Therapist   @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+  date        DateTime    @db.Date
+  source      ShiftSource @default(AUTO)
+  createdAt   DateTime    @default(now())
+
+  @@unique([therapistId, date])
+  @@index([date])
+}
+
+model Absence {
+  id          String      @id @default(cuid())
+  therapistId String
+  therapist   Therapist   @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+  fromDate    DateTime    @db.Date
+  toDate      DateTime    @db.Date
+  type        AbsenceType
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  @@index([therapistId, fromDate])
+}
+
+model Appointment {
+  id              String                  @id @default(cuid())
+  code            String                  @unique
+  userId          String?
+  user            User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestName       String
+  guestEmail      String
+  guestPhone      String
+  procedureId     String
+  procedure       Procedure               @relation(fields: [procedureId], references: [id])
+  variantId       String
+  variant         ProcedureVariant        @relation(fields: [variantId], references: [id])
+  startsAt        DateTime                @db.Timestamptz(3)
+  endsAt          DateTime                @db.Timestamptz(3)
+  priceCents      Int
+  status          AppointmentStatus       @default(BOOKED)
+  source          BookingSource           @default(WEB)
+  therapistChosen Boolean                 @default(false)
+  cancelTokenHash String?
+  notes           String?
+  locale          String                  @default("bg")
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  allocations     AppointmentAllocation[]
+
+  @@index([startsAt])
+  @@index([guestEmail])
+}
+
+// One row per therapist+room an appointment occupies.
+// startsAt..blockedUntil includes the 20-minute rest/room-prep buffer.
+// Overlaps are rejected by EXCLUDE constraints (see migration SQL).
+model AppointmentAllocation {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  therapistId   String
+  therapist     Therapist   @relation(fields: [therapistId], references: [id])
+  roomId        Int
+  room          Room        @relation(fields: [roomId], references: [id])
+  startsAt      DateTime    @db.Timestamptz(3)
+  blockedUntil  DateTime    @db.Timestamptz(3)
+  active        Boolean     @default(true)
+
+  @@index([therapistId, startsAt])
+  @@index([roomId, startsAt])
+}
+
+model Article {
+  id          String        @id @default(cuid())
+  procedureId String        @unique
+  procedure   Procedure     @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  titleEn     String
+  titleBg     String
+  bodyEn      String
+  bodyBg      String
+  source      ContentSource @default(SEED)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model SchedulerMessage {
+  id        String         @id @default(cuid())
+  role      SchedulerRole
+  content   String
+  changes   Json?
+  preview   Json?
+  status    ProposalStatus @default(NONE)
+  createdAt DateTime       @default(now())
+}
+
+model WebhookOutbox {
+  id        String       @id @default(cuid())
+  event     String
+  payload   Json
+  status    OutboxStatus @default(PENDING)
+  attempts  Int          @default(0)
+  lastError String?
+  createdAt DateTime     @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+}
