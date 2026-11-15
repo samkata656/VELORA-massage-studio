@@ -1,5 +1,7 @@
 # VELORA — massage studio
 
+[![CI](https://github.com/samkata656/VELORA-massage-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/samkata656/VELORA-massage-studio/actions/workflows/ci.yml)
+
 Booking site and admin panel for VELORA, a 3-room, 5-therapist massage studio in Sofia.
 
 - **Public site** in Bulgarian (`/bg`, default) and English (`/en`), with prices in EUR:
@@ -50,7 +52,15 @@ npm run db:seed
 npm run dev
 ```
 
-Other scripts: `npm test` (scheduling engine tests), `npm run typecheck`, `npm run lint`, `npm run db:studio`.
+Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run lint`, `npm run db:studio`.
+
+**CI** (`.github/workflows/ci.yml`) runs on every push to `main` and on every pull request, as four parallel jobs:
+- lint, type check, unit tests and a production dependency audit
+- migrations and seed (run twice) against PostgreSQL 18, plus a check that the schema matches the migrations
+- production build with a smoke test of pages and the n8n API
+- Docker image build
+
+Dependabot opens weekly update PRs for npm packages, the pinned GitHub Actions and the Docker base image.
 
 ### Seeded accounts
 
