@@ -6,6 +6,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { BookingError, createBooking, getSlots, rescheduleBooking, cancelBooking, type SlotView } from "@/lib/services/booking";
 import { flushOutbox } from "@/lib/webhooks/outbox";
 import { isLocale } from "@/i18n/config";
+import { clientIp } from "@/lib/request";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 export type SlotsResult = { slots: SlotView[] } | { error: string };
 
@@ -40,16 +42,18 @@ const BookingSchema = z.object({
   phone: z.string().trim().regex(/^\+?[0-9\s\-()]{7,20}$/),
   notes: z.string().max(1000).nullish(),
   locale: z.string(),
+  turnstileToken: z.string().max(2048).nullish(),
 });
 
 export type BookingResult =
   | { ok: true; code: string; token: string }
-  | { ok: false; error: "SLOT_TAKEN" | "VALIDATION" | "ERROR"; field?: string };
+  | { ok: false; error: "SLOT_TAKEN" | "VALIDATION" | "BOT_CHECK" | "ERROR"; field?: string };
 
 export async function submitBookingAction(input: z.input<typeof BookingSchema>): Promise<BookingResult> {
   const parsed = BookingSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "VALIDATION", field: String(parsed.error.issues[0].path[0]) };
   const d = parsed.data;
+  if (!(await verifyTurnstile(d.turnstileToken, "booking", await clientIp()))) return { ok: false, error: "BOT_CHECK" };
   const user = await getCurrentUser();
   try {
     const { appointment, cancelToken } = await createBooking({

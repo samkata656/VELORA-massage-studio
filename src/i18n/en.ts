@@ -158,6 +158,7 @@ export const en = {
     email: "Please enter a valid email address.",
     phone: "Please enter a valid phone number.",
     generic: "Something went wrong. Please try again.",
+    botCheck: "Please complete the security check and try again.",
     notFound: "Page not found",
     notFoundText: "The page you are looking for doesn't exist.",
     goHome: "Go to homepage",

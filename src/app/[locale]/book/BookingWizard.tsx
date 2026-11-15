@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import type { Dictionary } from "@/i18n";
 import { formatPrice, type Locale } from "@/i18n/config";
 import { DateStrip, TimeGrid } from "@/components/SlotPicker";
+import { Turnstile } from "@/components/Turnstile";
 import { fetchSlotsAction, submitBookingAction } from "./actions";
 
 export interface WizardProcedure {
@@ -30,11 +31,12 @@ interface Props {
   user: { name: string; email: string; phone: string | null } | null;
   initialSlug?: string;
   dates: string[];
+  turnstileSiteKey: string | null;
 }
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-export function BookingWizard({ locale, t, procedures, therapists, user, initialSlug, dates }: Props) {
+export function BookingWizard({ locale, t, procedures, therapists, user, initialSlug, dates, turnstileSiteKey }: Props) {
   const initial = procedures.find((p) => p.slug === initialSlug) ?? null;
   const [step, setStep] = useState(initial && initial.variants.length === 1 ? 1 : 0);
   const [procedureId, setProcedureId] = useState<string | null>(initial?.id ?? null);
@@ -47,6 +49,8 @@ export function BookingWizard({ locale, t, procedures, therapists, user, initial
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [done, setDone] = useState<{ code: string; token: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [botToken, setBotToken] = useState<string | null>(null);
+  const [botReset, setBotReset] = useState(0);
   const tb = t.booking;
 
   const procedure = procedures.find((p) => p.id === procedureId) ?? null;
@@ -74,7 +78,9 @@ export function BookingWizard({ locale, t, procedures, therapists, user, initial
         phone: form.phone,
         notes: form.notes || null,
         locale,
+        turnstileToken: botToken,
       });
+      if (!res.ok) setBotReset((n) => n + 1); // the token was spent; get a fresh one for the retry
       if (res.ok) {
         setDone({ code: res.code, token: res.token });
         setStep(3);
@@ -83,6 +89,8 @@ export function BookingWizard({ locale, t, procedures, therapists, user, initial
         setError(tb.slotTaken);
         setStart(null);
         setStep(1);
+      } else if (res.error === "BOT_CHECK") {
+        setError(t.errors.botCheck);
       } else if (res.error === "VALIDATION") {
         setFieldError(res.field ?? null);
         setError(res.field === "email" ? t.errors.email : res.field === "phone" ? t.errors.phone : t.errors.required);
@@ -263,12 +271,13 @@ export function BookingWizard({ locale, t, procedures, therapists, user, initial
             <Field id="notes" label={tb.notes} hint={tb.notesHint}>
               <textarea id="notes" className="input min-h-24" maxLength={1000} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </Field>
+            {turnstileSiteKey && <Turnstile siteKey={turnstileSiteKey} action="booking" locale={locale} onToken={setBotToken} resetKey={botReset} />}
             <p className="text-xs text-muted">{tb.cancelPolicy}</p>
             <div className="flex justify-between">
               <button type="button" className="btn btn-ghost" onClick={() => setStep(1)}>
                 {tb.back}
               </button>
-              <button className="btn btn-accent" disabled={pending}>
+              <button className="btn btn-accent" disabled={pending || (!!turnstileSiteKey && !botToken)}>
                 {pending ? tb.confirming : tb.confirm}
               </button>
             </div>
