@@ -4,9 +4,22 @@ import Link from "next/link";
 import { useActionState } from "react";
 import type { Dictionary } from "@/i18n";
 import type { Locale } from "@/i18n/config";
+import { Turnstile } from "@/components/Turnstile";
 import { loginAction, registerAction, type AuthState } from "./actions";
 
-export function AuthForm({ mode, locale, t, next }: { mode: "login" | "register"; locale: Locale; t: Dictionary; next?: string }) {
+export function AuthForm({
+  mode,
+  locale,
+  t,
+  next,
+  turnstileSiteKey,
+}: {
+  mode: "login" | "register";
+  locale: Locale;
+  t: Dictionary;
+  next?: string;
+  turnstileSiteKey: string | null;
+}) {
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? loginAction : registerAction, {});
   const f = state.fields ?? {};
   const switchHref = `/${locale}/${mode === "login" ? "register" : "login"}${next ? `?next=${encodeURIComponent(next)}` : ""}`;
@@ -45,6 +58,9 @@ export function AuthForm({ mode, locale, t, next }: { mode: "login" | "register"
         />
         {mode === "register" && <span className="hint">{t.auth.passwordHint}</span>}
       </div>
+
+      {/* A new state object after each submit resets the widget: tokens are single-use. */}
+      {turnstileSiteKey && <Turnstile siteKey={turnstileSiteKey} action={mode} locale={locale} resetKey={state} />}
 
       {state.error && (
         <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">

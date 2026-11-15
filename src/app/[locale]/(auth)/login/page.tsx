@@ -5,6 +5,7 @@ import { getDictionary } from "@/i18n";
 import { getCurrentUser } from "@/lib/auth";
 import { AuthForm } from "../AuthForm";
 import { AuthShell } from "../AuthShell";
+import { turnstileSiteKey } from "@/lib/turnstile";
 
 export async function generateMetadata({ params }: PageProps<"/[locale]/login">): Promise<Metadata> {
   return { title: getDictionary((await params).locale as Locale).auth.login };
@@ -18,7 +19,7 @@ export default async function LoginPage({ params, searchParams }: PageProps<"/[l
   if (user) redirect(user.role === "ADMIN" ? "/admin" : `/${locale}/account`);
   return (
     <AuthShell title={t.auth.loginTitle} lead={t.auth.loginLead}>
-      <AuthForm mode="login" locale={locale} t={t} next={typeof next === "string" ? next : undefined} />
+      <AuthForm mode="login" locale={locale} t={t} next={typeof next === "string" ? next : undefined} turnstileSiteKey={turnstileSiteKey()} />
     </AuthShell>
   );
 }

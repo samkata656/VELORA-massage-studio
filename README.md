@@ -63,6 +63,13 @@ Set these in `.env` **before** the first seed. There are no default passwords.
 
 **Login protection.** After 10 failed logins for one email, or 30 from one IP address, login is blocked for 15 minutes.
 
+**Bot protection (Cloudflare Turnstile).** Login, registration and booking show a Turnstile check, and the server verifies every token with Cloudflare.
+- **To turn it on:** create a widget in the Cloudflare dashboard (Turnstile → Add widget, with your domain), then set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in `.env`. The keys are read at runtime, so no rebuild is needed.
+- **While the secret is empty, protection is off**, so local setups work without Cloudflare.
+- **Testing:** Cloudflare's public test keys (in `.env.example`) always pass and show a "For testing only" note.
+- **Each token is tied to its form and used once.** If Cloudflare can't be reached, the request is refused.
+- **Not covered:** the n8n API (protected by its key) and the admin panel (behind admin login).
+
 **Guest bookings stay guest bookings.** Registering doesn't attach earlier guest bookings with the same email, because emails are not verified. Guests manage a booking through the private link in their confirmation.
 
 ## Studio rules (enforced on the server)

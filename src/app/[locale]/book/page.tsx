@@ -6,6 +6,7 @@ import { getActiveProcedures, getBookableTherapists } from "@/lib/services/catal
 import { BOOKING_HORIZON_DAYS } from "@/lib/config";
 import { addDays, todayKey } from "@/lib/time";
 import { BookingWizard } from "./BookingWizard";
+import { turnstileSiteKey } from "@/lib/turnstile";
 
 export async function generateMetadata({ params }: PageProps<"/[locale]/book">): Promise<Metadata> {
   return { title: getDictionary((await params).locale as Locale).booking.title };
@@ -27,6 +28,7 @@ export default async function BookPage({ params, searchParams }: PageProps<"/[lo
         locale={locale}
         t={t}
         dates={dates}
+        turnstileSiteKey={turnstileSiteKey()}
         initialSlug={typeof slug === "string" ? slug : undefined}
         user={user ? { name: user.name, email: user.email, phone: user.phone } : null}
         procedures={procedures
