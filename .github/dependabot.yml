@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # npm packages: one grouped PR per week for minor/patch updates; majors come separately.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Pinned GitHub Actions in .github/workflows (keeps the commit SHAs current).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Base images in the Dockerfile (node:26-alpine).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
