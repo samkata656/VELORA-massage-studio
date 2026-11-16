@@ -42,6 +42,34 @@ docker compose logs migrate # shows the generated admin password on the first ru
 | `N8N_WEBHOOK_SECRET` | No outbound events are sent, because unsigned events could be forged. |
 | `SEED_ADMIN_PASSWORD`, `SEED_DEMO_PASSWORD` | The seed generates random passwords and prints them once. |
 
+### On a VPS with Portainer
+
+[`docker-compose.portainer.yml`](docker-compose.portainer.yml) runs ready-made images, so nothing is built on the server. When CI passes on `main`, the **Publish Docker images** workflow pushes two images:
+- `ghcr.io/samkata656/velora-massage-studio`: the app
+- `ghcr.io/samkata656/velora-massage-studio-migrate`: a one-off job that applies migrations and seeds an empty database
+
+Each image gets the tags `latest` and `sha-<commit>`.
+
+1. **Let the VPS pull the images.** New GHCR packages are private. Either:
+   - make both public (GitHub → your profile → Packages → package → Package settings → Change visibility), or
+   - in Portainer, add the `ghcr.io` registry with a GitHub token that has `read:packages`.
+2. **Create the stack:** Portainer → Stacks → Add stack, then either:
+   - paste the file into the **Web editor**, or
+   - choose **Repository** with this repo's URL and compose path `docker-compose.portainer.yml`.
+3. **Add the environment variables.** `POSTGRES_PASSWORD` and `APP_URL` are required. The rest are explained at the top of the file. Generate secrets with `openssl rand -base64 36`.
+4. **Deploy.** On the first deploy, open the `velora-migrate-1` container logs for the generated admin password. Set `SEED_ADMIN_PASSWORD` beforehand if you'd rather choose it.
+5. **Update:** use **Update the stack** with **Re-pull image**. Migrations run again automatically and existing data is kept. Set `VELORA_TAG=sha-xxxxxxx` to pin or roll back a version.
+
+**Networking.** The app listens on port `3000` (`APP_PORT`), and the database is never published. Put HTTPS in front with a reverse proxy, Cloudflare or a Cloudflare Tunnel. If the proxy runs on the same host, set `APP_BIND=127.0.0.1` so port 3000 isn't open to the internet. Behind Cloudflare, the app reads the visitor IP from `CF-Connecting-IP`, which the login limiter and Turnstile rely on.
+
+**Back up the database:**
+
+```bash
+docker exec velora-db-1 pg_dump -U velora velora > velora-$(date +%F).sql
+```
+
+The images are built for `linux/amd64`, which covers most VPS plans.
+
 ### Local development (database in Docker)
 
 ```bash

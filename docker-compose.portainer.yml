@@ -1,0 +1,85 @@
+# VELORA — production stack for Portainer (or plain `docker compose`) on a VPS.
+#
+# Uses the images that GitHub Actions publishes to ghcr.io after CI passes on main;
+# nothing is built on the server. Set the variables below in Portainer:
+# Stacks → Add stack → Web editor (paste this file) → "Environment variables".
+# Required ones make the deploy fail with a clear message when missing.
+#
+#   POSTGRES_PASSWORD     database password (letters and digits only)          REQUIRED
+#   APP_URL               public address, e.g. https://velora-spa.bg           REQUIRED
+#   N8N_API_KEY           key n8n uses for /api/n8n/* (min. 32 characters)     optional — API off when empty
+#   N8N_WEBHOOK_URL       where outbound events are sent                       optional
+#   N8N_WEBHOOK_SECRET    HMAC secret for outbound events                      optional — nothing sent when empty
+#   N8N_SCHEDULER_WEBHOOK_URL  n8n workflow for the admin AI rota chat        optional
+#   TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY  Cloudflare bot protection      optional — off when empty
+#   SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD     first admin account            optional — random password
+#                                              is printed in the "migrate" container log
+#   APP_PORT              host port for the app (default 3000)                 optional
+#   APP_BIND              host interface (default 0.0.0.0; use 127.0.0.1 behind a reverse proxy on the host)
+#   VELORA_TAG            image tag to run (default latest, or sha-xxxxxxx to pin a version)
+#
+# Generate secrets with:  openssl rand -base64 36
+
+name: velora
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: velora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: velora
+    # No published port: only the app and migrate containers can reach the database.
+    volumes:
+      - velora-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velora -d velora"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # One-off: applies new migrations and seeds an empty database, then exits.
+  # Runs on every (re)deploy, so updating the image tag also updates the schema.
+  migrate:
+    image: ghcr.io/samkata656/velora-massage-studio-migrate:${VELORA_TAG:-latest}
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://velora:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/velora?schema=public
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@velora-spa.bg}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_DEMO_EMAIL: ${SEED_DEMO_EMAIL:-demo@velora-spa.bg}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
+    logging: *logging
+
+  app:
+    image: ghcr.io/samkata656/velora-massage-studio:${VELORA_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://velora:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/velora?schema=public
+      APP_URL: ${APP_URL:?Set APP_URL, e.g. https://velora-spa.bg}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-}
+      N8N_SCHEDULER_WEBHOOK_URL: ${N8N_SCHEDULER_WEBHOOK_URL:-}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    # Health check (GET /api/health) is built into the image.
+    logging: *logging
+
+volumes:
+  velora-db:
