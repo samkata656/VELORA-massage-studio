@@ -32,7 +32,7 @@ docker compose logs migrate # shows the generated admin password on the first ru
 - This starts Postgres, a one-shot `migrate` service (`prisma migrate deploy` plus seed) and the app on <http://localhost:3000>.
 - Set `APP_PORT=3002` to use a different host port.
 - The seed only runs on an empty database.
-- Postgres is published on `127.0.0.1:5433` only. On a server, set `POSTGRES_PASSWORD` (letters and digits) before the first start and use the same password in `DATABASE_URL`.
+- Postgres is published on `127.0.0.1:5433` only. On a server, set `POSTGRES_PASSWORD` (letters and digits only, e.g. `openssl rand -hex 32`) before the first start and use the same password in `DATABASE_URL`.
 
 **Secrets in `.env`.** Generate each with `openssl rand -base64 36`:
 
@@ -56,7 +56,9 @@ Each image gets the tags `latest` and `sha-<commit>`.
 2. **Create the stack:** Portainer → Stacks → Add stack, then either:
    - paste the file into the **Web editor**, or
    - choose **Repository** with this repo's URL and compose path `docker-compose.portainer.yml`.
-3. **Add the environment variables.** `POSTGRES_PASSWORD` and `APP_URL` are required. The rest are explained at the top of the file. Generate secrets with `openssl rand -base64 36`.
+3. **Add the environment variables.** `POSTGRES_PASSWORD` and `APP_URL` are required. The rest are explained at the top of the file.
+   - Generate the database password with `openssl rand -hex 32`. It goes into the connection URL, so base64 characters like `/`, `+` and `=` would break it.
+   - Generate the other secrets with `openssl rand -base64 36`.
 4. **Deploy.** On the first deploy, open the `velora-migrate-1` container logs for the generated admin password. Set `SEED_ADMIN_PASSWORD` beforehand if you'd rather choose it.
 5. **Update:** use **Update the stack** with **Re-pull image**. Migrations run again automatically and existing data is kept. Set `VELORA_TAG=sha-xxxxxxx` to pin or roll back a version.
 

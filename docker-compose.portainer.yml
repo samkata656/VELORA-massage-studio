@@ -18,7 +18,8 @@
 #   APP_BIND              host interface (default 0.0.0.0; use 127.0.0.1 behind a reverse proxy on the host)
 #   VELORA_TAG            image tag to run (default latest, or sha-xxxxxxx to pin a version)
 #
-# Generate secrets with:  openssl rand -base64 36
+# Generate POSTGRES_PASSWORD with:  openssl rand -hex 32   (it goes into DATABASE_URL; base64 "/+=" would break the URL)
+# Generate the other secrets with:  openssl rand -base64 36
 
 name: velora
 
