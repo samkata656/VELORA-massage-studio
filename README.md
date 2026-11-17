@@ -62,7 +62,15 @@ Each image gets the tags `latest` and `sha-<commit>`.
 4. **Deploy.** On the first deploy, open the `velora-migrate-1` container logs for the generated admin password. Set `SEED_ADMIN_PASSWORD` beforehand if you'd rather choose it.
 5. **Update:** use **Update the stack** with **Re-pull image**. Migrations run again automatically and existing data is kept. Set `VELORA_TAG=sha-xxxxxxx` to pin or roll back a version.
 
-**Networking.** The app listens on port `3000` (`APP_PORT`), and the database is never published. Put HTTPS in front with a reverse proxy, Cloudflare or a Cloudflare Tunnel. If the proxy runs on the same host, set `APP_BIND=127.0.0.1` so port 3000 isn't open to the internet. Behind Cloudflare, the app reads the visitor IP from `CF-Connecting-IP`, which the login limiter and Turnstile rely on.
+**Networking.**
+- **Shared `proxy` network:** the app container is named `velora-app` and joins this network, so a reverse proxy on it (Nginx Proxy Manager, Traefik, Caddy…) can forward your domain to `http://velora-app:3000`. Create the network once on the server before the first deploy:
+
+  ```bash
+  docker network create proxy
+  ```
+
+- **Database:** stays on the stack's private network and is never published.
+- **Port 3000:** the app is also published on `APP_PORT`. When the proxy reaches it over the network, set `APP_BIND=127.0.0.1` so port 3000 isn't open to the internet. Behind Cloudflare, the app reads the visitor IP from `CF-Connecting-IP`, which the login limiter and Turnstile rely on.
 
 **Back up the database:**
 

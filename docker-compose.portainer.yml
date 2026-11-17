@@ -15,7 +15,7 @@
 #   SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD     first admin account            optional — random password
 #                                              is printed in the "migrate" container log
 #   APP_PORT              host port for the app (default 3000)                 optional
-#   APP_BIND              host interface (default 0.0.0.0; use 127.0.0.1 behind a reverse proxy on the host)
+#   APP_BIND              host interface (default 0.0.0.0; use 127.0.0.1 when the reverse proxy reaches the app over the "proxy" network)
 #   VELORA_TAG            image tag to run (default latest, or sha-xxxxxxx to pin a version)
 #
 # Generate POSTGRES_PASSWORD with:  openssl rand -hex 32   (it goes into DATABASE_URL; base64 "/+=" would break the URL)
@@ -62,6 +62,8 @@ services:
 
   app:
     image: ghcr.io/samkata656/velora-massage-studio:${VELORA_TAG:-latest}
+    # Fixed name so the reverse proxy can forward to http://velora-app:3000
+    container_name: velora-app
     restart: unless-stopped
     depends_on:
       db:
@@ -79,8 +81,16 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     ports:
       - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"
+    networks:
+      - default # reaches the database
+      - proxy   # shared with the reverse proxy (Nginx Proxy Manager, Traefik, Caddy…)
     # Health check (GET /api/health) is built into the image.
     logging: *logging
 
 volumes:
   velora-db:
+
+networks:
+  # Created once on the server, outside this stack:  docker network create proxy
+  proxy:
+    external: true
