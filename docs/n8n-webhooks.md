@@ -137,13 +137,31 @@ X-Velora-Signature: <hex HMAC-SHA256 of the raw body, key = N8N_WEBHOOK_SECRET>
 - Any 2xx response counts as delivered.
 - Use `id` to deduplicate.
 
-**Verifying the signature in n8n** (Code node, with "raw body" enabled on the Webhook node):
+**Verifying the signature in n8n** (Code node). VELORA signs `JSON.stringify(payload)`, so re-stringifying the parsed body gives the same bytes. Self-hosted n8n needs `NODE_FUNCTION_ALLOW_BUILTIN=crypto` for `require('crypto')`.
 
 ```js
 const crypto = require('crypto');
-const expected = crypto.createHmac('sha256', $env.VELORA_WEBHOOK_SECRET).update($json.rawBody).digest('hex');
+const secret = 'N8N_WEBHOOK_SECRET'; // or read it from a Settings node
+const expected = crypto.createHmac('sha256', secret).update(JSON.stringify($json.body)).digest('hex');
 if (expected !== $json.headers['x-velora-signature']) throw new Error('Bad signature');
 ```
+
+**Ready-made workflows** are in [`n8n/`](../n8n). Import them in n8n (Workflows → Import from file):
+
+| File | What it does | App variable |
+|---|---|---|
+| `velora-events.json` | Checks the signature and skips duplicates, emails clients on booking changes, writes or deletes benefits articles with OpenAI | `N8N_WEBHOOK_URL` = its webhook's Production URL |
+| `velora-rota-assistant.json` | The admin AI rota chat (section 3) | `N8N_SCHEDULER_WEBHOOK_URL` = its webhook's Production URL |
+| `velora-booking-chat.json` | Public AI chat: treatments, availability, book, cancel, reschedule | none |
+| `velora-reminders.json` | Emails tomorrow's clients every day at 10:00 | none |
+
+After importing:
+- Fill in the **Settings** node of each workflow.
+- Create the credentials:
+  - **VELORA API**: Header Auth, name `Authorization`, value `Bearer <N8N_API_KEY>`.
+  - **OpenAI**.
+  - **SMTP**.
+- Activate the workflows.
 
 | Event | `data` | Typical n8n use |
 |---|---|---|

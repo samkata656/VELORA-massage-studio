@@ -1,0 +1,434 @@
+{
+  "name": "VELORA — AI booking chat",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## VELORA AI booking chat\nPublic chat page where clients see treatments, check free times, book, cancel and reschedule.\nAll rules (24h limit, availability, double booking) are enforced by VELORA's API, not by the AI.\n\n**Setup**\n1. **Settings** → VELORA_URL.\n2. Credentials: **VELORA API** (Header Auth: `Authorization` / `Bearer <N8N_API_KEY>`) on all 5 tools, **OpenAI** on the model.\n3. Activate. The chat URL is on the \"Booking chat\" node; link it from the site or embed it with @n8n/chat.\n\nBookings made here have source \"AI\" and trigger the normal confirmation email.",
+        "height": 420,
+        "width": 520,
+        "color": 4
+      },
+      "id": "velora-0312-0000-4000-8000-000000000312",
+      "name": "README",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "public": true,
+        "mode": "hostedChat",
+        "initialMessages": "Здравейте! Аз съм асистентът на VELORA. С какво мога да помогна?\nHi! I'm VELORA's assistant — I can help you book a massage.",
+        "options": {
+          "title": "VELORA",
+          "subtitle": "Book a massage · Резервирай масаж",
+          "inputPlaceholder": "Write a message…",
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "velora-0301-0000-4000-8000-000000000301",
+      "name": "Booking chat",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "fa954653-0f87-4f68-839d-c8919b89180a"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "velora-0302-0000-4000-8000-000000000302",
+              "name": "VELORA_URL",
+              "value": "https://velora.example.com",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "velora-0303-0000-4000-8000-000000000303",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "=You are the booking assistant of VELORA, a massage studio in Sofia (14 Oborishte St, +359 88 712 4560, open every day 10:00–19:00).\nToday is {{ $now.setZone('Europe/Sofia').toFormat('cccc, yyyy-MM-dd') }}; all times are Europe/Sofia. Prices are in EUR.\nAnswer in the language the client writes in (Bulgarian or English). Be warm and brief.\n\nTools:\n- list_procedures: treatments, durations, prices and variantId. Call it before suggesting treatments; never invent prices.\n- check_availability: free start times for a variantId on a date. Offer at most 5 times.\n- create_booking: books a time. Before calling it, collect name, email and phone, then repeat treatment, duration, date, time and price and get an explicit \"yes\".\n- cancel_booking / reschedule_booking: need the booking code (VEL-XXXXXX) and the email used for the booking. Only possible up to 24h before the start.\n\nRules: never reveal other clients' bookings or personal data. If a tool returns SLOT_TAKEN, check availability again. If TOO_LATE, tell the client to call the studio.\nNo medical advice: for pregnancy, injuries or conditions suggest asking a doctor; prenatal massage exists for pregnancy. After booking, give the booking code and say a confirmation email is on its way.",
+          "maxIterations": 12
+        }
+      },
+      "id": "velora-0304-0000-4000-8000-000000000304",
+      "name": "Booking agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5-mini"
+        },
+        "options": {}
+      },
+      "id": "velora-0305-0000-4000-8000-000000000305",
+      "name": "OpenAI model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        260
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_ME",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Booking chat').first().json.sessionId }}",
+        "contextWindowLength": 20
+      },
+      "id": "velora-0306-0000-4000-8000-000000000306",
+      "name": "Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        420,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Lists VELORA's treatments with durations, EUR prices and the variantId needed for availability and booking.",
+        "method": "GET",
+        "url": "={{ $('Settings').first().json.VELORA_URL }}/api/n8n/procedures",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "velora-0307-0000-4000-8000-000000000307",
+      "name": "list_procedures",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        260
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Returns free start times (HH:MM) for one treatment variant on one date.",
+        "method": "GET",
+        "url": "={{ $('Settings').first().json.VELORA_URL }}/api/n8n/availability",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "variantId",
+              "value": "={{ $fromAI('variantId', \"variantId from list_procedures\", 'string') }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $fromAI('date', \"Date in YYYY-MM-DD\", 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "velora-0308-0000-4000-8000-000000000308",
+      "name": "check_availability",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        260
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Books a treatment. Only call after the client confirmed all details.",
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.VELORA_URL }}/api/n8n/bookings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "variantId",
+              "value": "={{ $fromAI('variantId', \"variantId from list_procedures\", 'string') }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $fromAI('date', \"Date in YYYY-MM-DD\", 'string') }}"
+            },
+            {
+              "name": "time",
+              "value": "={{ $fromAI('time', \"Start time HH:MM, one returned by check_availability\", 'string') }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $fromAI('name', \"Client full name\", 'string') }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $fromAI('email', \"Client email\", 'string') }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $fromAI('phone', \"Client phone number\", 'string') }}"
+            },
+            {
+              "name": "notes",
+              "value": "={{ $fromAI('notes', \"Anything the therapist should know, or an empty string\", 'string') }}"
+            },
+            {
+              "name": "locale",
+              "value": "={{ $fromAI('locale', \"bg if the client writes Bulgarian, otherwise en\", 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "velora-0309-0000-4000-8000-000000000309",
+      "name": "create_booking",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        260
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Cancels a booking. Needs the booking code and the email used for it.",
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.VELORA_URL }}/api/n8n/bookings/{{ $fromAI('code', 'Booking code like VEL-7K2M9Q', 'string') }}/cancel",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $fromAI('email', \"Email used for the booking\", 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "velora-0310-0000-4000-8000-000000000310",
+      "name": "cancel_booking",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        260
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Moves a booking to a new free date and time. Check availability first.",
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.VELORA_URL }}/api/n8n/bookings/{{ $fromAI('code', 'Booking code like VEL-7K2M9Q', 'string') }}/reschedule",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $fromAI('date', \"New date in YYYY-MM-DD\", 'string') }}"
+            },
+            {
+              "name": "time",
+              "value": "={{ $fromAI('time', \"New start time HH:MM\", 'string') }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $fromAI('email', \"Email used for the booking\", 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "velora-0311-0000-4000-8000-000000000311",
+      "name": "reschedule_booking",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        260
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Booking chat": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "list_procedures": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cancel_booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reschedule_booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Sofia",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

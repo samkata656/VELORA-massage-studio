@@ -1,0 +1,199 @@
+{
+  "name": "VELORA — Daily reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## VELORA daily reminders\nEvery day at 10:00 (Europe/Sofia) emails each client who has a booking tomorrow.\n\n**Setup**\n1. **Settings** → VELORA_URL and FROM_EMAIL.\n2. Credentials: **VELORA API** (Header Auth: `Authorization` / `Bearer <N8N_API_KEY>`), **SMTP**.\n3. Activate.",
+        "height": 420,
+        "width": 520,
+        "color": 4
+      },
+      "id": "velora-0408-0000-4000-8000-000000000408",
+      "name": "README",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 10,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "velora-0401-0000-4000-8000-000000000401",
+      "name": "Every day 10:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "velora-0402-0000-4000-8000-000000000402",
+              "name": "VELORA_URL",
+              "value": "https://velora.example.com",
+              "type": "string"
+            },
+            {
+              "id": "velora-0403-0000-4000-8000-000000000403",
+              "name": "FROM_EMAIL",
+              "value": "VELORA <hello@velora-spa.bg>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "velora-0404-0000-4000-8000-000000000404",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Settings').first().json.VELORA_URL }}/api/n8n/bookings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $now.setZone('Europe/Sofia').plus({ days: 1 }).toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "velora-0405-0000-4000-8000-000000000405",
+      "name": "Tomorrow's bookings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One reminder per active booking tomorrow. Couples bookings are one booking, so one email.\nconst bookings = $json.bookings ?? [];\nconst esc = (s) => String(s ?? '').replace(/[&<>\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]));\nreturn bookings\n  .filter((a) => a.status === 'BOOKED' && a.client?.email)\n  .map((a) => {\n    const bg = a.locale !== 'en';\n    const name = bg ? a.procedure?.nameBg : a.procedure?.nameEn;\n    const html = bg\n      ? '<p>Здравейте, ' + esc(a.client.name) + ',</p><p>Напомняме ви за <b>' + esc(name) + '</b> утре в <b>' + a.localTime + '</b>.</p>' +\n        '<p>Код: <b>' + a.code + '</b> · <a href=\"' + esc(a.manageUrl) + '\">Управление на резервацията</a></p><p>VELORA · ул. Оборище 14, София · +359 88 712 4560</p>'\n      : '<p>Hello ' + esc(a.client.name) + ',</p><p>A reminder of your <b>' + esc(name) + '</b> tomorrow at <b>' + a.localTime + '</b>.</p>' +\n        '<p>Booking code: <b>' + a.code + '</b> · <a href=\"' + esc(a.manageUrl) + '\">Manage your booking</a></p><p>VELORA · 14 Oborishte St, Sofia · +359 88 712 4560</p>';\n    return { json: { to: a.client.email, subject: bg ? 'VELORA · Напомняне за утре ' + a.localTime : 'VELORA · See you tomorrow at ' + a.localTime, html } };\n  });"
+      },
+      "id": "velora-0406-0000-4000-8000-000000000406",
+      "name": "Build reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Settings').first().json.FROM_EMAIL }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "velora-0407-0000-4000-8000-000000000407",
+      "name": "Send reminder",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        0
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_ME",
+          "name": "SMTP"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every day 10:00": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Tomorrow's bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tomorrow's bookings": {
+      "main": [
+        [
+          {
+            "node": "Build reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build reminders": {
+      "main": [
+        [
+          {
+            "node": "Send reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Sofia",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
