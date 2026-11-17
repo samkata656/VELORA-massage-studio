@@ -22,7 +22,7 @@ export default async function ProceduresPage() {
     <>
       <PageHeader
         title="Procedures & prices"
-        lead="Change lengths and prices, add or remove procedures. The benefits article of a new procedure is written automatically; removing a procedure removes its article."
+        lead="Change lengths and prices, add or remove procedures. Write each procedure’s benefits article with Edit article; until then the site shows “Article coming soon”."
       />
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <div className="space-y-4">
@@ -36,11 +36,13 @@ export default async function ProceduresPage() {
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   {p.therapistsRequired > 1 && <span className="chip">2 therapists · 2 rooms</span>}
                   {p.article ? (
-                    <Link href={`/en/benefits/${p.slug}`} className="chip hover:!text-espresso">
-                      Article ({p.article.source.toLowerCase()})
+                    <Link href={`/admin/procedures/${p.id}/article`} className="chip hover:!text-espresso">
+                      Edit article
                     </Link>
                   ) : (
-                    <span className="chip !text-warn">Article coming soon</span>
+                    <Link href={`/admin/procedures/${p.id}/article`} className="chip !text-warn hover:!text-espresso">
+                      Write article
+                    </Link>
                   )}
                 </div>
               </div>
@@ -79,7 +81,7 @@ export default async function ProceduresPage() {
                   </div>
                 </form>
                 <form action={deleteProcedureAction.bind(null, p.id)} className="mt-4 border-t border-line pt-4">
-                  <ConfirmButton className="btn btn-danger btn-sm" message={`Remove “${p.nameEn}” from the menu? Past bookings stay in the history; its article will be removed.`}>
+                  <ConfirmButton className="btn btn-danger btn-sm" message={`Remove “${p.nameEn}” from the menu? Past bookings stay in the history; its article is hidden from the site.`}>
                     Remove procedure
                   </ConfirmButton>
                 </form>

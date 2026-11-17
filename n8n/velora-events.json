@@ -1,0 +1,524 @@
+{
+  "name": "VELORA — Events (booking emails)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## VELORA events receiver\nReceives signed events from VELORA (`N8N_WEBHOOK_URL`).\n\n**Setup**\n1. Open **Settings** and fill in VELORA_URL, WEBHOOK_SECRET (= N8N_WEBHOOK_SECRET) and FROM_EMAIL.\n2. Credentials: **VELORA API** (Header Auth: `Authorization` / `Bearer <N8N_API_KEY>`), **SMTP**.\n3. Self-hosted n8n: set `NODE_FUNCTION_ALLOW_BUILTIN=crypto` (signature check).\n4. Activate, copy the **Production URL** of \"Velora event\" into `N8N_WEBHOOK_URL`.\n\nBad signatures get 401. VELORA gets 200 only after the event is handled; if the email fails it gets 500 and retries later. Event ids already handled are answered 200 and skipped.",
+        "height": 420,
+        "width": 520,
+        "color": 4
+      },
+      "id": "velora-0122-0000-4000-8000-000000000122",
+      "name": "README",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "velora-events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "velora-0101-0000-4000-8000-000000000101",
+      "name": "Velora event",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "72529d70-3bd0-4d93-bc39-c8cf3f50d5cc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "velora-0102-0000-4000-8000-000000000102",
+              "name": "VELORA_URL",
+              "value": "https://velora.example.com",
+              "type": "string"
+            },
+            {
+              "id": "velora-0103-0000-4000-8000-000000000103",
+              "name": "WEBHOOK_SECRET",
+              "value": "paste N8N_WEBHOOK_SECRET here",
+              "type": "string"
+            },
+            {
+              "id": "velora-0104-0000-4000-8000-000000000104",
+              "name": "FROM_EMAIL",
+              "value": "VELORA <hello@velora-spa.bg>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "velora-0105-0000-4000-8000-000000000105",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Checks X-Velora-Signature = hex HMAC-SHA256(body, WEBHOOK_SECRET).\n// VELORA signs JSON.stringify(payload); n8n parses the body, and re-stringifying it gives the same bytes.\n// Self-hosted n8n: allow the crypto module with NODE_FUNCTION_ALLOW_BUILTIN=crypto.\nconst crypto = require('crypto');\nconst secret = $('Settings').first().json.WEBHOOK_SECRET;\nconst req = $('Velora event').first().json;\nconst body = req.body ?? {};\nconst given = String(req.headers['x-velora-signature'] ?? '');\nconst expected = crypto.createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex');\nconst ok = !!secret && given.length === expected.length &&\n  crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));\n\n// VELORA retries failed sends, so skip event ids that were already handled.\n// Ids are recorded by \"Mark handled\" only after the event was processed successfully.\nconst seen = $getWorkflowStaticData('global').seen ?? [];\nconst duplicate = ok && seen.includes(body.id);\n\n// Verification results go last so fields in the (untrusted) body can never override them.\nreturn [{ json: { ...body, ok, duplicate } }];"
+      },
+      "id": "velora-0106-0000-4000-8000-000000000106",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "velora-0107-0000-4000-8000-000000000107",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "velora-0108-0000-4000-8000-000000000108",
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"error\": \"bad signature\" }",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "velora-0109-0000-4000-8000-000000000109",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remember this event id so VELORA's retries of it are skipped.\nconst id = $('Verify signature').first().json.id;\nconst store = $getWorkflowStaticData('global');\nstore.seen = [...(store.seen ?? []).filter((x) => x !== id), id].slice(-500);\nreturn [{ json: { received: true } }];"
+      },
+      "id": "velora-0110-0000-4000-8000-000000000110",
+      "name": "Mark handled",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"received\": true }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "velora-0111-0000-4000-8000-000000000111",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2220,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"error\": \"email could not be sent, retry later\" }",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "velora-0112-0000-4000-8000-000000000112",
+      "name": "Respond 500 (VELORA retries)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "velora-0113-0000-4000-8000-000000000113",
+              "leftValue": "={{ !$json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "velora-0114-0000-4000-8000-000000000114",
+      "name": "Has recipient?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "velora-0115-0000-4000-8000-000000000115",
+                    "leftValue": "={{ $json.duplicate ? 'duplicate' : $json.event }}",
+                    "rightValue": "^appointment\\.(created|rescheduled|cancelled)$",
+                    "operator": {
+                      "type": "string",
+                      "operation": "regex"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Booking emails"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "velora-0116-0000-4000-8000-000000000116",
+                    "leftValue": "={{ $json.duplicate ? 'duplicate' : $json.event }}",
+                    "rightValue": "^rota\\.updated$",
+                    "operator": {
+                      "type": "string",
+                      "operation": "regex"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Rota updated"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "velora-0117-0000-4000-8000-000000000117",
+                    "leftValue": "={{ $json.duplicate ? 'duplicate' : $json.event }}",
+                    "rightValue": "^duplicate$",
+                    "operator": {
+                      "type": "string",
+                      "operation": "regex"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Already handled"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "velora-0118-0000-4000-8000-000000000118",
+      "name": "Route by event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds the client email in the booking's language (bg/en).\nconst e = $json;\nconst a = e.data ?? {};\nconst to = a.client?.email;\nif (!to) return [{ json: { skip: true } }];\nconst bg = a.locale !== 'en';\nconst name = bg ? a.procedure?.nameBg : a.procedure?.nameEn;\nconst when = a.localDate + ' ' + a.localTime;\nconst T = {\n  'appointment.created': bg\n    ? ['Резервацията ви е потвърдена', 'Очакваме ви за <b>' + name + '</b> на <b>' + when + '</b>.']\n    : ['Your booking is confirmed', 'We look forward to seeing you for <b>' + name + '</b> on <b>' + when + '</b>.'],\n  'appointment.rescheduled': bg\n    ? ['Резервацията ви е преместена', 'Новият час за <b>' + name + '</b> е <b>' + when + '</b>.']\n    : ['Your booking has moved', 'Your <b>' + name + '</b> is now on <b>' + when + '</b>.'],\n  'appointment.cancelled': bg\n    ? ['Резервацията ви е отменена', 'Резервацията за <b>' + name + '</b> на ' + when + ' е отменена.']\n    : ['Your booking is cancelled', 'Your <b>' + name + '</b> on ' + when + ' has been cancelled.'],\n}[e.event];\nif (!T) return [{ json: { skip: true } }];\nconst esc = (s) => String(s ?? '').replace(/[&<>\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]));\nconst lines = [\n  (bg ? 'Здравейте, ' : 'Hello ') + esc(a.client?.name) + ',',\n  T[1],\n  (bg ? 'Код: ' : 'Booking code: ') + '<b>' + esc(a.code) + '</b> · ' + a.durationMin + ' min · ' + a.price?.amount + ' ' + a.price?.currency,\n];\nif (e.event !== 'appointment.cancelled') {\n  // Guests can only open the booking with the private link (sent once, in the confirmation email).\n  // Account holders use the plain link and sign in.\n  const link = a.privateManageUrl ?? (a.hasAccount ? a.manageUrl : null);\n  if (link) {\n    const label = a.hasAccount ? (bg ? 'Управление на резервацията (вход в профила)' : 'Manage your booking (sign in)') : (bg ? 'Управление на резервацията' : 'Manage your booking');\n    lines.push('<a href=\"' + esc(link) + '\">' + label + '</a>' + (a.privateManageUrl ? (bg ? '<br><small>Пазете този имейл: линкът е личен.</small>' : '<br><small>Keep this email: the link is private.</small>') : ''));\n  } else {\n    lines.push(bg ? 'За промени използвайте личния линк от имейла за потвърждение.' : 'To make changes, use the private link in your confirmation email.');\n  }\n}\nlines.push('VELORA · +359 88 712 4560');\nreturn [{ json: { to, subject: 'VELORA · ' + T[0] + ' (' + a.code + ')', html: lines.map((l) => '<p>' + l + '</p>').join('') } }];"
+      },
+      "id": "velora-0119-0000-4000-8000-000000000119",
+      "name": "Build email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Settings').first().json.FROM_EMAIL }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "velora-0120-0000-4000-8000-000000000120",
+      "name": "Send email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1780,
+        -420
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_ME",
+          "name": "SMTP"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "id": "velora-0121-0000-4000-8000-000000000121",
+      "name": "Rota updated (add your notification)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Velora event": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Route by event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by event": {
+      "main": [
+        [
+          {
+            "node": "Build email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rota updated (add your notification)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark handled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build email": {
+      "main": [
+        [
+          {
+            "node": "Has recipient?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has recipient?": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark handled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "main": [
+        [
+          {
+            "node": "Mark handled",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 500 (VELORA retries)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rota updated (add your notification)": {
+      "main": [
+        [
+          {
+            "node": "Mark handled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark handled": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Sofia",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

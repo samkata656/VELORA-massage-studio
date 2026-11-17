@@ -18,6 +18,7 @@ import {
 import { rebalanceRota, toggleShift } from "@/lib/services/rota";
 import { applyProposal, discardProposal, proposeChanges, sendSchedulerMessage } from "@/lib/services/scheduler-chat";
 import { ScheduleChangeSchema } from "@/lib/scheduling/changes";
+import { ArticleSchema } from "@/lib/articles";
 import type { RuleViolation } from "@/lib/scheduling/rota";
 
 const flush = () => after(() => flushOutbox());
@@ -237,7 +238,6 @@ function procedurePayload(p: { id: string; slug: string; nameEn: string; nameBg:
     summaryBg: p.summaryBg,
     therapistsRequired: p.therapistsRequired,
     variants: p.variants.map((v) => ({ durationMin: v.durationMin, price: v.priceCents / 100, currency: "EUR" })),
-    articleEndpoint: `${process.env.APP_URL ?? ""}/api/n8n/articles/${p.slug}`,
   };
 }
 
@@ -266,7 +266,6 @@ export async function createProcedureAction(form: FormData): Promise<{ ok: boole
       },
       include: { variants: true },
     });
-    // n8n listens for this event and writes the benefits article (PUT /api/n8n/articles/:slug)
     await enqueue(tx, "procedure.created", procedurePayload(p));
   });
   flush();
@@ -284,6 +283,34 @@ export async function updateProcedureAction(id: string, form: FormData) {
   flush();
   revalidatePath("/admin", "layout");
 }
+
+/* ---------------- Benefits articles (written by the admin) ---------------- */
+
+export async function saveArticleAction(procedureId: string, form: FormData): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin();
+  const procedure = await db.procedure.findFirst({ where: { id: procedureId, deletedAt: null }, select: { id: true } });
+  if (!procedure) return { ok: false, error: "This procedure no longer exists." };
+  const parsed = ArticleSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: `${ARTICLE_FIELDS[String(issue.path[0])] ?? "Article"}: ${issue.message}` };
+  }
+  await db.article.upsert({
+    where: { procedureId },
+    update: { ...parsed.data, source: "ADMIN" },
+    create: { ...parsed.data, procedureId, source: "ADMIN" },
+  });
+  revalidatePath("/", "layout"); // admin + public benefits/treatments pages
+  return { ok: true };
+}
+
+export async function deleteArticleAction(procedureId: string) {
+  await requireAdmin();
+  await db.article.deleteMany({ where: { procedureId } });
+  revalidatePath("/", "layout");
+}
+
+const ARTICLE_FIELDS: Record<string, string> = { titleEn: "Title (EN)", titleBg: "Title (BG)", bodyEn: "Text (EN)", bodyBg: "Text (BG)" };
 
 export async function saveVariantAction(procedureId: string, variantId: string | null, form: FormData): Promise<{ ok: boolean; error?: string }> {
   await requireAdmin();
@@ -326,7 +353,6 @@ export async function deleteProcedureAction(id: string) {
       data: { active: false, deletedAt: new Date() },
       include: { variants: true },
     });
-    // n8n listens for this and deletes the article (DELETE /api/n8n/articles/:slug)
     await enqueue(tx, "procedure.deleted", procedurePayload(p));
   });
   flush();

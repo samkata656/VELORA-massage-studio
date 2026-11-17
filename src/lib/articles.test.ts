@@ -8,7 +8,7 @@ const valid = {
   bodyBg: "Помага на мускулите да се възстановят след тренировка.",
 };
 
-describe("ArticleSchema (PUT /api/n8n/articles/:slug)", () => {
+describe("ArticleSchema (admin article form)", () => {
   it("accepts Bulgarian and English text and trims it", () => {
     const r = ArticleSchema.parse({ ...valid, titleEn: "  Sports massage for recovery  " });
     expect(r.titleEn).toBe("Sports massage for recovery");
@@ -18,10 +18,10 @@ describe("ArticleSchema (PUT /api/n8n/articles/:slug)", () => {
   it("rejects text garbled by a wrong encoding", () => {
     const r = ArticleSchema.safeParse({ ...valid, titleBg: "������� �����" });
     expect(r.success).toBe(false);
-    expect(r.error?.issues[0]).toMatchObject({ path: ["titleBg"], message: expect.stringContaining("UTF-8") });
+    expect(r.error?.issues[0]).toMatchObject({ path: ["titleBg"], message: expect.stringContaining("invalid characters") });
   });
 
-  it("decodes a real UTF-8 request body correctly but flags a Latin-1 one", () => {
+  it("accepts correctly decoded UTF-8 text but flags text decoded with the wrong code page", () => {
     const json = JSON.stringify(valid);
     expect(ArticleSchema.safeParse(JSON.parse(new TextDecoder().decode(Buffer.from(json, "utf8")))).success).toBe(true);
     const cp1251ish = Buffer.from(json.replace(/[^\x00-\x7f]/g, "\xe8"), "latin1");

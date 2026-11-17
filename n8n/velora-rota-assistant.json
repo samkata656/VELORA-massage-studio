@@ -1,0 +1,171 @@
+{
+  "name": "VELORA — AI rota assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## VELORA AI rota assistant\nAdmin → Work rota chat. VELORA POSTs the message and gets back `{ reply, changes[] }`.\nThe AI only proposes changes; VELORA validates them and shows a preview before anything is saved.\n\n**Setup**\n1. Credentials: **VELORA API** (Header Auth: `Authorization` / `Bearer <N8N_API_KEY>`). The webhook uses it to check that the call comes from VELORA. **OpenAI** for the model.\n2. Activate, copy the **Production URL** of \"Rota request\" into `N8N_SCHEDULER_WEBHOOK_URL`.\n\nModel: change `model` in \"Build prompt\" if you want another one.",
+        "height": 420,
+        "width": 520,
+        "color": 4
+      },
+      "id": "velora-0206-0000-4000-8000-000000000206",
+      "name": "README",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "velora-scheduler",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "velora-0201-0000-4000-8000-000000000201",
+      "name": "Rota request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "a72efd2a-c23f-4b05-9cea-80a2a8f4d57f",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "VELORA API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns VELORA's scheduler request into an OpenAI call with a strict JSON schema.\nconst b = $json.body;\nconst system = [\n  'You turn a spa manager\\'s free-text request into rota changes. Today is ' + b.today + ' (timezone Europe/Sofia).',\n  'Therapists (use their ids in \"therapist\"): ' + JSON.stringify(b.therapists) + '.',\n  'The rota covers ' + b.rotaHorizon?.from + ' to ' + b.rotaHorizon?.to + '. Studio rules: ' + (b.rules ?? []).join(' '),\n  'Resolve relative dates (\"till 6th January\", \"next week\", \"tomorrow\") against today; assume the next occurrence of a date if no year is given.',\n  '\"Sick\", \"ill\", \"болен/болна\" → SICK; \"paid leave\", \"vacation\", \"отпуск\" → PAID_LEAVE; \"unpaid\", \"неплатен\" → UNPAID.',\n  '\"Extra shifts\" without dates means this week (leave from/to null). Do not invent changes the manager did not ask for.',\n  'Fields that do not apply to a change type must be null. Dates are YYYY-MM-DD.',\n  'If something is ambiguous, return no change for it and ask in \"reply\". Reply in the manager\\'s language, in one or two sentences.',\n].join('\\n');\nconst history = (b.history ?? []).slice(0, -1) // the last entry is the current message\n  .filter((h) => h.role === 'ADMIN' || h.role === 'AI')\n  .map((h) => ({ role: h.role === 'ADMIN' ? 'user' : 'assistant', content: h.content }));\nconst str = { type: ['string', 'null'] };\nreturn [{ json: { requestBody: {\n  model: 'gpt-5-mini',\n  messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: b.message }],\n  response_format: { type: 'json_schema', json_schema: { name: 'rota_changes', strict: true, schema: {\n    type: 'object', additionalProperties: false, required: ['reply', 'changes'],\n    properties: {\n      reply: { type: 'string' },\n      changes: { type: 'array', items: {\n        type: 'object', additionalProperties: false,\n        required: ['type', 'therapist', 'from', 'to', 'absenceType', 'note', 'count', 'date'],\n        properties: {\n          type: { type: 'string', enum: ['absence', 'extra_shifts', 'day_off', 'add_shift'] },\n          therapist: { type: 'string' },\n          from: str, to: str, note: str, date: str,\n          absenceType: { type: ['string', 'null'], enum: ['SICK', 'PAID_LEAVE', 'UNPAID', 'OTHER', null] },\n          count: { type: ['integer', 'null'] },\n        },\n      } },\n    },\n  } } },\n} } }];"
+      },
+      "id": "velora-0202-0000-4000-8000-000000000202",
+      "name": "Build prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 55000
+        }
+      },
+      "id": "velora-0203-0000-4000-8000-000000000203",
+      "name": "OpenAI: plan changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_ME",
+          "name": "OpenAI"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Drops null fields (VELORA's schema expects them absent) and never fails the webhook.\ntry {\n  if ($json.error) throw new Error(typeof $json.error === 'string' ? $json.error : JSON.stringify($json.error));\n  const out = JSON.parse($json.choices[0].message.content);\n  const changes = (out.changes ?? []).map((c) => Object.fromEntries(Object.entries(c).filter(([, v]) => v !== null)));\n  return [{ json: { reply: out.reply, changes } }];\n} catch (e) {\n  return [{ json: { reply: 'The AI could not process that request (' + String(e.message ?? e).slice(0, 120) + '). Please try again or use the manual form.', changes: [] } }];\n}"
+      },
+      "id": "velora-0204-0000-4000-8000-000000000204",
+      "name": "Parse changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "velora-0205-0000-4000-8000-000000000205",
+      "name": "Respond with changes",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Rota request": {
+      "main": [
+        [
+          {
+            "node": "Build prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: plan changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: plan changes": {
+      "main": [
+        [
+          {
+            "node": "Parse changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse changes": {
+      "main": [
+        [
+          {
+            "node": "Respond with changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Sofia",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
