@@ -180,7 +180,15 @@ export async function createBooking(input: CreateBookingInput) {
         },
         include: { allocations: { include: { therapist: true, room: true } }, procedure: true, variant: true },
       });
-      await enqueue(tx, "appointment.created", appointmentPayload(appt));
+      // Guests can only manage a booking through the private link (the token is stored hashed, so this
+      // is the one moment it exists). The created event carries it so n8n can put it in the confirmation email.
+      // It is never part of the API's appointment payload.
+      const payload = appointmentPayload(appt);
+      await enqueue(
+        tx,
+        "appointment.created",
+        appt.userId ? payload : { ...payload, privateManageUrl: `${payload.manageUrl}?t=${encodeURIComponent(cancelToken)}` },
+      );
       return appt;
     });
     return { appointment, cancelToken };
@@ -204,6 +212,7 @@ export function appointmentPayload(a: {
   source: string;
   locale: string;
   notes?: string | null;
+  userId?: string | null;
   procedure: { slug: string; nameEn: string; nameBg: string };
   variant: { durationMin: number };
   allocations: { therapist: { id: string; name: string }; room: { id: number; name: string } }[];
@@ -224,6 +233,8 @@ export function appointmentPayload(a: {
     notes: a.notes ?? null,
     source: a.source,
     locale: a.locale,
+    /** Booked from a client account: manageUrl works after signing in. Guests need the private link. */
+    hasAccount: !!a.userId,
     manageUrl: `${process.env.APP_URL ?? ""}/${a.locale}/booking/${a.code}`,
   };
 }

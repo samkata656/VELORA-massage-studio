@@ -84,7 +84,7 @@ Every listed time can be booked right now. The rules are already applied: shifts
 
 - You can send `"procedureSlug": "deep-tissue", "durationMin": 90` instead of `variantId`.
 - `therapistId` counts **only** when the email belongs to a registered client, because preferred therapists are an account feature. For guests, the least busy free therapist is assigned.
-- `201` returns `{ "appointment": <AppointmentPayload> }`, with `source: "AI"`.
+- `201` returns `{ "booking": <AppointmentPayload> }`, with `source: "AI"`. Its `manageUrl` already includes the private `?t=` token, so the chat can give it to a guest.
 
 Other booking endpoints:
 
@@ -170,12 +170,15 @@ After importing:
   "therapists": [{ "id": "…", "name": "Maria Ivanova" }],
   "rooms": ["Olive"],
   "client": { "name": "…", "email": "…", "phone": "…" },
-  "notes": null, "source": "WEB", "locale": "bg",
+  "notes": null, "source": "WEB", "locale": "bg", "hasAccount": false,
   "manageUrl": "https://velora-spa.bg/bg/booking/VEL-7K2M9Q"
 }
 ```
 
-`manageUrl` opens the booking's manage page. Guests also need the private cancel link shown on their confirmation screen.
+- `manageUrl` opens the booking's manage page. Clients with an account (`hasAccount: true`) sign in there.
+- Guests can only open it with the private link. That link contains a token that is stored hashed and exists only when the booking is made, so:
+  - `appointment.created` for a guest booking also carries `privateManageUrl` (`manageUrl?t=…`) for the confirmation email. It is the only place the link is sent, and it is never returned by the API's GET endpoints.
+  - Later events (`rescheduled`, `cancelled`) have no private link. Tell guests to use the one from their confirmation email.
 
 **ProcedurePayload**
 
