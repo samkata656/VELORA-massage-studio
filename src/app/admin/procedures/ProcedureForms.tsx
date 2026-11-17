@@ -70,7 +70,7 @@ export function NewProcedureForm() {
         const f = new FormData(form);
         start(async () => {
           const r = await createProcedureAction(f);
-          setMsg(r.ok ? { ok: true, text: "Procedure added. Its benefits article will be written automatically." } : { ok: false, text: r.error ?? "Failed" });
+          setMsg(r.ok ? { ok: true, text: "Procedure added. Write its benefits article with “Write article”." } : { ok: false, text: r.error ?? "Failed" });
           if (r.ok) {
             form.reset();
             setRows(1);

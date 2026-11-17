@@ -13,7 +13,8 @@ Booking site and admin panel for VELORA, a 3-room, 5-therapist massage studio in
   - day schedule by therapist and by room, showing buffers and lunch
   - work rota with an AI chat assistant (via n8n) and rule-checked manual edits
   - appointments (create, cancel, delete, reassign), therapists, procedures and prices
-- **n8n integration**: REST API for the AI booking chat, signed outbound events and the rota assistant. See [docs/n8n-webhooks.md](docs/n8n-webhooks.md).
+  - benefits articles in Bulgarian and English, written and edited by hand
+- **n8n integration**: REST API for the AI booking chat, signed outbound events (booking emails) and the rota assistant. Ready-made workflows are in [`n8n/`](n8n); see [docs/n8n-webhooks.md](docs/n8n-webhooks.md).
 
 ## Stack
 

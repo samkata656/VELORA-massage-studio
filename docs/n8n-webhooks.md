@@ -4,7 +4,7 @@ VELORA talks to n8n in three ways:
 
 | Direction | What | Configure |
 |---|---|---|
-| n8n → VELORA | REST API for the AI booking chat and benefits articles | `N8N_API_KEY` |
+| n8n → VELORA | REST API for the AI booking chat | `N8N_API_KEY` |
 | VELORA → n8n | Signed event webhooks (bookings, procedures, rota) | `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_SECRET` |
 | VELORA → n8n → VELORA | Admin AI rota assistant (request/response) | `N8N_SCHEDULER_WEBHOOK_URL`, `N8N_API_KEY` |
 
@@ -88,7 +88,7 @@ Every listed time can be booked right now. The rules are already applied: shifts
 
 Other booking endpoints:
 
-- `GET /api/n8n/bookings?date=2026-11-20` lists a day's bookings, for reminder workflows.
+- `GET /api/n8n/bookings?date=2026-11-20` lists a day's bookings, for example for reminder workflows.
 - `GET /api/n8n/bookings?email=maria@example.com` lists one client's bookings.
 - `GET /api/n8n/bookings/:code` returns one booking.
 - `POST /api/n8n/bookings/:code/cancel` takes `{ "email": "…", "force": false }`.
@@ -98,22 +98,7 @@ Other booking endpoints:
 
 ### Benefits articles
 
-When VELORA sends `procedure.created`, an n8n workflow can write the article with OpenAI and store it:
-
-`PUT /api/n8n/articles/:procedureSlug`
-
-```json
-{
-  "titleEn": "Why bamboo massage works",
-  "titleBg": "Защо масажът с бамбук действа",
-  "bodyEn": "Intro paragraph…\n\n- Benefit one\n- Benefit two\n\nClosing paragraph…",
-  "bodyBg": "…"
-}
-```
-
-The body is plain text: a blank line starts a new paragraph, and lines starting with `- ` become a bullet list. Sending the same slug again replaces the article.
-
-When VELORA sends `procedure.deleted`, call `DELETE /api/n8n/articles/:procedureSlug`. Removed procedures are already hidden from the site. Until an article exists, the benefits page shows "Article coming soon".
+Articles are written by the admin in **Admin → Procedures → Edit article**. There is no API for them. Until an article exists, the benefits page shows "Article coming soon". `hasArticle` in `/api/n8n/procedures` tells you whether one exists.
 
 ---
 
@@ -137,13 +122,30 @@ X-Velora-Signature: <hex HMAC-SHA256 of the raw body, key = N8N_WEBHOOK_SECRET>
 - Any 2xx response counts as delivered.
 - Use `id` to deduplicate.
 
-**Verifying the signature in n8n** (Code node, with "raw body" enabled on the Webhook node):
+**Verifying the signature in n8n** (Code node). VELORA signs `JSON.stringify(payload)`, so re-stringifying the parsed body gives the same bytes. Self-hosted n8n needs `NODE_FUNCTION_ALLOW_BUILTIN=crypto` for `require('crypto')`.
 
 ```js
 const crypto = require('crypto');
-const expected = crypto.createHmac('sha256', $env.VELORA_WEBHOOK_SECRET).update($json.rawBody).digest('hex');
+const secret = 'N8N_WEBHOOK_SECRET'; // or read it from a Settings node
+const expected = crypto.createHmac('sha256', secret).update(JSON.stringify($json.body)).digest('hex');
 if (expected !== $json.headers['x-velora-signature']) throw new Error('Bad signature');
 ```
+
+**Ready-made workflows** are in [`n8n/`](../n8n). Import them in n8n (Workflows → Import from file):
+
+| File | What it does | App variable |
+|---|---|---|
+| `velora-events.json` | Checks the signature and skips duplicates, emails clients when a booking is confirmed, moved or cancelled (Bulgarian or English) | `N8N_WEBHOOK_URL` = its webhook's Production URL |
+| `velora-rota-assistant.json` | The admin AI rota chat (section 3) | `N8N_SCHEDULER_WEBHOOK_URL` = its webhook's Production URL |
+| `velora-booking-chat.json` | Public AI chat: treatments, availability, book, cancel, reschedule | none |
+
+After importing:
+- Fill in the **Settings** node of each workflow.
+- Create the credentials:
+  - **VELORA API**: Header Auth, name `Authorization`, value `Bearer <N8N_API_KEY>`.
+  - **OpenAI**.
+  - **SMTP**.
+- Activate the workflows.
 
 | Event | `data` | Typical n8n use |
 |---|---|---|
@@ -151,9 +153,9 @@ if (expected !== $json.headers['x-velora-signature']) throw new Error('Bad signa
 | `appointment.rescheduled` | AppointmentPayload + `previousStartsAt` | "Your booking moved" message |
 | `appointment.cancelled` | AppointmentPayload | Cancellation message |
 | `appointment.deleted` | AppointmentPayload | Internal log (admin hard delete) |
-| `procedure.created` | ProcedurePayload | Generate the benefits article, then `PUT /api/n8n/articles/:slug` |
-| `procedure.updated` | ProcedurePayload | Optionally refresh the article |
-| `procedure.deleted` | ProcedurePayload | `DELETE /api/n8n/articles/:slug` |
+| `procedure.created` | ProcedurePayload | Sync the menu to another system, notify staff |
+| `procedure.updated` | ProcedurePayload | Same, for name, description or price changes |
+| `procedure.deleted` | ProcedurePayload | Remove it from the other system |
 | `rota.updated` | `{ weeks, added[], removed[], absences[] }` | Notify therapists of shift changes |
 
 **AppointmentPayload**
@@ -181,8 +183,7 @@ if (expected !== $json.headers['x-velora-signature']) throw new Error('Bad signa
 {
   "id": "…", "slug": "bamboo", "nameEn": "…", "nameBg": "…", "summaryEn": "…", "summaryBg": "…",
   "therapistsRequired": 1,
-  "variants": [{ "durationMin": 60, "price": 90, "currency": "EUR" }],
-  "articleEndpoint": "https://velora-spa.bg/api/n8n/articles/bamboo"
+  "variants": [{ "durationMin": 60, "price": 90, "currency": "EUR" }]
 }
 ```
 
